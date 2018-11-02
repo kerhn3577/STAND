@@ -53,14 +53,14 @@ u_TS=np.array([float(List[i][3]) for i in range(0,len(List))])
 
 class STAND:
      
-    def SEoSLang(F,b,G):
-        return TS0-G*np.log(b*F+1) #Langmuir's Equation of State
+    def SEoSLang(F,b,A):
+        return TS0-((10**16/NA)*Tem*(R*10**7)*1/A)*np.log(b*F+1) #Langmuir's Equation of State
     
     def Langiso(F,b): #Langmuir's Isotherm
         return b*F/(b*F+1)  
     
     def Micelleconc(T,F,N): #Micelle concentration
-        return (T-F)/N   
+        return (T-F)  
     
     def Balance(NA,GE,T):    # Balance equation
         def FS(F):
@@ -78,56 +78,42 @@ class STAND:
             F.append(y)
         F=np.array(F)
         return F
-    
-    def OF(Teor,Exp,Uncer): #Objective function
-        s=0
-        Xi=((Teor-Exp)/Uncer)**2
-        for i in Xi:
-            s=s+i
-        return  np.sqrt(s)/(len(Exp)-4)
+
     
     def Adjust(Param,conc,data,uncer):
         
-        G=(10**16/NA)*Tem*(R*10**7)*1/Param[3]
         F=STAND.FreeConc(Param[1],Param[0], conc)  
         M=STAND.Micelleconc(conc,F,Param[1]) #Micelle concentration
-        TS=STAND.SEoSLang(F,Param[2],G) #Surface tension  (Langmuirs EoS and isotherm)
+        TS=STAND.SEoSLang(F,Param[2],Param[3]) #Surface tension  (Langmuirs EoS and isotherm)
         Theta=STAND.Langiso(F,Param[2])  
-        Xi_sq=STAND.OF(TS,data,uncer)
  
         return F,M,TS,Theta,Xi_sq
 
-    
-def Residual(Param,conc,data,uncer):
-        
-    G=(10**16/NA)*Tem*(R*10**7)*1/Param[3]
-    F=STAND.FreeConc(Param[1],Param[0], conc)  
-    TS=STAND.SEoSLang(F,Param[2],G) #Surface tension  (Langmuirs EoS and isotherm)
-
-    return ((TS-data)/uncer)**2
+    def Residual(Param,conc,data,uncer):
+        TS=STAND.SEoSLang(STAND.FreeConc(Param[1],Param[0], conc),Param[2],Param[3])
+        return ((TS-data)/uncer)**2
 
 
 #Curve fitting 
         
 
-#params = Parameters()
-#params.add('amp', value=10, vary=False)
-#params.add('decay', value=0.007, min=0.0)
-#params.add('phase', value=0.2)
-#params.add('frequency', value=3.0, max=10)
 Ps=np.array([Gibbs,N,Lang,MinA])    
 #cmc=np.exp(Ps[0]/RT)
 vars = Ps
-out = leastsq(Residual, vars, args=(conc, TS_exp, u_TS))
+out = leastsq(STAND.Residual, vars, args=(conc, TS_exp, u_TS))
 c=np.array(out)
 d=c[0]
 F,M,TS,Theta,Xi_sq=STAND.Adjust(d,conc,TS_exp,u_TS)
 
 
+
+
+
+
 #Graphs
 plt.figure(1)
-plt.plot(conc,F,'b' ,label='Free surfactant concentration')
-plt.plot(conc,M,'y' ,label='Micelle concentration')
+plt.plot(conc,F,'b' ,label='Free surfactant')
+plt.plot(conc,M,'y' ,label=' Surfactant molecules in micelles')
 plt.legend(loc="center right") 
 plt.xlabel('Total concentration/M')
 plt.ylabel('Concentracion/M')
