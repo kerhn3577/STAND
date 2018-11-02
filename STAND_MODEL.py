@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize
 import json
+from scipy.optimize import leastsq
 
 plt.close("all")
 
@@ -28,10 +29,7 @@ Lang=inputdata['Langmuir s constant']
 MinA=inputdata['Minimum Area '] 
 
 
-
 RT=R*Tem
-
-
 
 # =============================================================================
 #Equations of the model
@@ -39,19 +37,14 @@ RT=R*Tem
 
 
 f=open("octil.txt","r").readlines()
-conc=[] 
-TS_exp=[]
-u_conc=[]
-u_TS=[]
+
 List = [line.strip().split(' ') for line in f]
-for i in range(0,len(List)):
-    conc.append(float(List[i][0]))
-    TS_exp.append(float(List[i][1]))
-    u_conc.append(float(List[i][2]))
-    u_TS.append(float(List[i][3]))
-TS_exp=np.array(TS_exp)
-u_conc=np.array(u_conc)
-u_TS=np.array(u_TS)
+List = np.array( [line.strip().split(' ') for line in f])
+conc=np.array([float(List[i][0]) for i in range(0,len(List))] )
+TS_exp=np.array([float(List[i][1]) for i in range(0,len(List))])
+u_conc=np.array([float(List[i][2]) for i in range(0,len(List))])
+u_TS=np.array([float(List[i][3]) for i in range(0,len(List))])
+
 
 #Simulation
 #Totalc=np.linspace(0.00001*cmc,3*cmc,100) #Total concentration of surfactant
@@ -93,24 +86,42 @@ class STAND:
             s=s+i
         return  np.sqrt(s)/(len(Exp)-4)
     
-    def Adjust(Param,conc):
+    def Adjust(Param,conc,data,uncer):
         
         G=(10**16/NA)*Tem*(R*10**7)*1/Param[3]
-        F=np.array(STAND.FreeConc(Param[1],Param[0], conc) )      
-        M=np.array(STAND.Micelleconc(conc,F,Param[1])) #Micelle concentration
-        TS=np.array(STAND.SEoSLang(F,Param[2],G)) #Surface tension  (Langmuirs EoS and isotherm)
-        Theta=np.array(STAND.Langiso(F,Param[2])  ) 
-        Xi_sq=STAND.OF(TS,TS_exp,u_TS)
+        F=STAND.FreeConc(Param[1],Param[0], conc)  
+        M=STAND.Micelleconc(conc,F,Param[1]) #Micelle concentration
+        TS=STAND.SEoSLang(F,Param[2],G) #Surface tension  (Langmuirs EoS and isotherm)
+        Theta=STAND.Langiso(F,Param[2])  
+        Xi_sq=STAND.OF(TS,data,uncer)
  
         return F,M,TS,Theta,Xi_sq
 
-#Optimization        
+    
+def Residual(Param,conc,data,uncer):
+        
+    G=(10**16/NA)*Tem*(R*10**7)*1/Param[3]
+    F=STAND.FreeConc(Param[1],Param[0], conc)  
+    TS=STAND.SEoSLang(F,Param[2],G) #Surface tension  (Langmuirs EoS and isotherm)
+
+    return ((TS-data)/uncer)**2
+
+
+#Curve fitting 
+        
+
+#params = Parameters()
+#params.add('amp', value=10, vary=False)
+#params.add('decay', value=0.007, min=0.0)
+#params.add('phase', value=0.2)
+#params.add('frequency', value=3.0, max=10)
 Ps=np.array([Gibbs,N,Lang,MinA])    
 #cmc=np.exp(Ps[0]/RT)
-
-F,M,TS,Theta,Xi_sq=STAND.Adjust(Ps,conc)
-
-print(Xi_sq)
+vars = Ps
+out = leastsq(Residual, vars, args=(conc, TS_exp, u_TS))
+c=np.array(out)
+d=c[0]
+F,M,TS,Theta,Xi_sq=STAND.Adjust(d,conc,TS_exp,u_TS)
 
 
 #Graphs
