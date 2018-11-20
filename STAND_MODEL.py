@@ -32,7 +32,7 @@ RT=R*Tem
 # =============================================================================
 
 
-f=open("NP10.txt","r").readlines()
+f=open("octil.txt","r").readlines()
 
 List = [line.strip().split(' ') for line in f]
 List = np.array( [line.strip().split(' ') for line in f])
@@ -69,10 +69,9 @@ class STAND:
         F=[]
         y=1E-9
         for i in conc:
-            p=y
-            l=i
+            l=y
             q=STAND.Balance(NA,GE,i) 
-            y=scipy.optimize.bisect(q, l, p) #  at total i concentration of surfactant, y<Free surfactant at i <i, y is the Free surfactant at i-1 point
+            y=scipy.optimize.bisect(q, l, i) #  at total i concentration of surfactant, y<Free surfactant at i <i, y is the Free surfactant at i-1 point
             F.append(y)
         F=np.array(F)
         return F
@@ -82,16 +81,17 @@ class STAND:
         F=STAND.FreeConc(Param[3],Param[0], conc)  
         M=STAND.Micelleconc(conc,F)
         TS=STAND.SEoSLang(F,Param[1],Param[2]) 
-        Theta=STAND.Langiso(F,Param[1])  
+        Theta=STAND.Langiso(F,Param[1])
+        
  
         return F,M,TS,Theta
 
-    def Residual(Param,conc,ST_exp,uncer): # Objective function
+    def Residual(Param,conc,ST_exp): # Objective function
 #        print(Param)
         F=STAND.FreeConc(Param[3],Param[0], conc)
         TS=STAND.SEoSLang(F,Param[1],Param[2])
 #        s=0
-        X=((TS-ST_exp)/uncer)**2
+        X=((TS-ST_exp))**2
 #        for i in X:
 #            s=s+i
         return np.sqrt(X)
@@ -105,7 +105,7 @@ class STAND:
         F=STAND.FreeConc(NAg,ELG, conc)
         TS=STAND.SEoSLang(F,beta,Amin)
         s=0
-        X=((TS-TS_exp)/u_TS)**2
+        X=((TS-TS_exp))**2
         for i in X:
             s=s+i
         return np.sqrt(s)
@@ -141,32 +141,44 @@ class STAND:
         Amin=(-d1[0]/(298.15*Rerg))**-1*10**16/Av
         return dG,bet,Amin
 
+
 #Curve fitting 
 
 dG,bet,Amin=STAND.seeds(conc,TS_exp)
-
 Ps=np.array([dG,bet,Amin,N]) #input seeds
-#cmc=np.exp(Ps[0]/RT)
 minimizer_kwargs = {"method": "BFGS"}
 init_seeds = basinhopping(STAND.Aux, Ps, minimizer_kwargs=minimizer_kwargs)
 seeds= np.array([init_seeds.x[0],init_seeds.x[1],init_seeds.x[2],init_seeds.x[3]]) #basinhopping for get the global minimum
 print(seeds)
-out=leastsq(STAND.Residual, seeds, args=(conc, TS_exp, u_TS)) #least squares
+out=leastsq(STAND.Residual, seeds, args=(conc, TS_exp)) #least squares
 c=np.array(out)
 d=c[0]
 print(d)
+xi_sq=STAND.Aux(d)
+print(xi_sq)
 F,M,TS,Theta=STAND.Adjust(d,conc)
+
+#Gibbs adsorption energy
+GsRT=(d[2]*Av/10**16)**-1*Rerg*Tem
+dGads=-RT*np.log(GsRT*d[1])
+print(dGads/1000,'kJ/mol' )
+
 
 #OLD=[-8931,3100.2,56.12, 124] # octil
 #OLD=[-24840,3180000,44, 48] #NP4
 #OLD=[-22640,2460000,51.63, 34] #NP10
-
 #F1,M1,TS1,Theta1=STAND.Adjust(OLD,conc)
-err=[]
-for i in range(0, len(F)):
-    print('%1.10f,'  % (F[i]/TS_exp[i]*100))
-    err.append(F[i]/TS_exp[i]*100)
+
+#Error
+
+#err=[]
+#for i in range(0, len(F)):
+#    print('%1.10f,'  % (F[i]/TS_exp[i]*100))
+#    err.append(F[i]/TS_exp[i]*100)
+
 #Graphs
+
+# Surfactant concentration
 plt.figure(1)
 plt.plot(conc,F,'b' ,label='Free surfactant')
 plt.plot(conc,M,'y' ,label=' Surfactant molecules in micelles')
@@ -176,7 +188,7 @@ plt.legend(loc="upper left")
 plt.xlabel('Total concentration/M')
 plt.ylabel('Concentration/M')
 
-
+#Surface tension vs concentration plot
 plt.figure(2)
 #plt.plot(conc,TS1, "b",label="STAND 1")
 plt.plot(conc,TS,'g', label="STAND 2")
@@ -185,14 +197,17 @@ plt.legend(loc="upper right")
 plt.xlabel('Free surfactant concentration/M')
 plt.ylabel(r'$\sigma /dinacm^{-1}$')
 
+#Surface coverage
 plt.figure(3)
 plt.plot(F, Theta, 'b')
 #plt.plot(F1, Theta1, 'r')
 plt.xlabel('Free surfactant concentration/M')
 plt.ylabel(r'$\theta $')
 
-plt.figure(4)
-plt.plot(conc, err, 'bo')
-plt.xlabel('Surfactant concentration/M')
-plt.ylabel('error $')
+
+#Error
+#plt.figure(4)
+#plt.plot(conc, err, 'bo')
+#plt.xlabel('Surfactant concentration/M')
+#plt.ylabel('error $')
 
