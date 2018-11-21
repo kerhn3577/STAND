@@ -5,7 +5,7 @@ import json
 import scipy.optimize
 from scipy.optimize import leastsq
 from scipy.optimize import basinhopping
-#from lmfit import minimize, Parameters
+
 
 plt.close("all")
 
@@ -27,11 +27,6 @@ N=inputdata['Aggregation Number']
 
 RT=R*Tem
 
-# =============================================================================
-#Equations of the model
-# =============================================================================
-
-
 f=open("octil.txt","r").readlines()
 
 List = [line.strip().split(' ') for line in f]
@@ -42,9 +37,14 @@ u_conc=np.array([float(List[i][2]) for i in range(0,len(List))])
 u_TS=np.array([float(List[i][3]) for i in range(0,len(List))])
 
 
+# =============================================================================
+#Equations of the model
+# =============================================================================
+
+
+
 #Simulation
 #Totalc=np.linspace(0.00001*cmc,3*cmc,100) #Total concentration of surfactant
-
 
 
 class STAND:
@@ -71,7 +71,7 @@ class STAND:
         for i in conc:
             l=y
             q=STAND.Balance(NA,GE,i) 
-            y=scipy.optimize.bisect(q, l, i) #  at total i concentration of surfactant, y<Free surfactant at i <i, y is the Free surfactant at i-1 point
+            y=scipy.optimize.bisect(q, l, i)#  at total i concentration of surfactant, y<Free surfactant at i <i, y is the Free surfactant at i-1 point
             F.append(y)
         F=np.array(F)
         return F
@@ -86,12 +86,12 @@ class STAND:
  
         return F,M,TS,Theta
 
-    def Residual(Param,conc,ST_exp): # Objective function
+    def Residual(Param,conc,ST_exp,unc): # Objective function
 #        print(Param)
         F=STAND.FreeConc(Param[3],Param[0], conc)
         TS=STAND.SEoSLang(F,Param[1],Param[2])
 #        s=0
-        X=((TS-ST_exp))**2
+        X=((TS-ST_exp)/unc)**2
 #        for i in X:
 #            s=s+i
         return np.sqrt(X)
@@ -105,7 +105,7 @@ class STAND:
         F=STAND.FreeConc(NAg,ELG, conc)
         TS=STAND.SEoSLang(F,beta,Amin)
         s=0
-        X=((TS-TS_exp))**2
+        X=((TS-TS_exp)/u_TS)**2
         for i in X:
             s=s+i
         return np.sqrt(s)
@@ -114,9 +114,9 @@ class STAND:
         
         def Residual(par,con, TS):
             model=par[0]*con+par[1]
-            return (TS-model)**2
+            return ((TS-model))**2
         
-        conc2=[conc[i] for i in range(0,10)]
+        conc2=[conc[i] for i in range(0,7)]
         ln=np.array([np.log(i) for i in conc2])
         TS_exp2=np.array([TS_exp[i] for i in range(0,len(conc2))])
         
@@ -126,9 +126,9 @@ class STAND:
         d1=c1[0]
         
         
-        conc3=[conc[i] for i in range(len(conc)-5,len(conc))]
+        conc3=[conc[i] for i in range(len(conc)-4,len(conc))]
         ln3=np.array([np.log(i) for i in conc3])
-        TS_exp3=np.array([TS_exp[i] for i in range(len(conc)-5,len(conc))])
+        TS_exp3=np.array([TS_exp[i] for i in range(len(conc)-4,len(conc))])
         
         out2 = leastsq(Residual, vars, args=(ln3, TS_exp3))
         c2=np.array(out2)
@@ -149,32 +149,27 @@ Ps=np.array([dG,bet,Amin,N]) #input seeds
 minimizer_kwargs = {"method": "BFGS"}
 init_seeds = basinhopping(STAND.Aux, Ps, minimizer_kwargs=minimizer_kwargs)
 seeds= np.array([init_seeds.x[0],init_seeds.x[1],init_seeds.x[2],init_seeds.x[3]]) #basinhopping for get the global minimum
-print(seeds)
-out=leastsq(STAND.Residual, seeds, args=(conc, TS_exp)) #least squares
+out=leastsq(STAND.Residual, seeds, args=(conc, TS_exp,u_TS)) #least squares
 c=np.array(out)
 d=c[0]
-print(d)
 xi_sq=STAND.Aux(d)
-print(xi_sq)
 F,M,TS,Theta=STAND.Adjust(d,conc)
 
 #Gibbs adsorption energy
 GsRT=(d[2]*Av/10**16)**-1*Rerg*Tem
 dGads=-RT*np.log(GsRT*d[1])
-print(dGads/1000,'kJ/mol' )
 
 
-#OLD=[-8931,3100.2,56.12, 124] # octil
-#OLD=[-24840,3180000,44, 48] #NP4
-#OLD=[-22640,2460000,51.63, 34] #NP10
-#F1,M1,TS1,Theta1=STAND.Adjust(OLD,conc)
-
-#Error
-
-#err=[]
-#for i in range(0, len(F)):
-#    print('%1.10f,'  % (F[i]/TS_exp[i]*100))
-#    err.append(F[i]/TS_exp[i]*100)
+#out 
+out = {}
+out['Free Gibbs Micellization Energy /kJ/mol'] = round(d[0],2)
+out['Minimum Area /A/molecule '] = round(d[2],2)
+out['Langmuir s constant'] =round( d[1],2)
+out['Aggregation Number'] = round(d[3],2)
+out['Free Gibbs Adsorption Energy /kJ/mol'] = round(dGads/1000,2)
+out['Xi'] = round(xi_sq,2)
+jsonout = json.dumps(out)
+print(jsonout)
 
 #Graphs
 
@@ -182,15 +177,12 @@ print(dGads/1000,'kJ/mol' )
 plt.figure(1)
 plt.plot(conc,F,'b' ,label='Free surfactant')
 plt.plot(conc,M,'y' ,label=' Surfactant molecules in micelles')
-#plt.plot(conc,F1,'r' ,label='Free surfactant (STAND 1)')
-#plt.plot(conc,M1,'r' ,label=' Surfactant molecules in micelles (STAND 1)')
 plt.legend(loc="upper left") 
 plt.xlabel('Total concentration/M')
 plt.ylabel('Concentration/M')
 
 #Surface tension vs concentration plot
 plt.figure(2)
-#plt.plot(conc,TS1, "b",label="STAND 1")
 plt.plot(conc,TS,'g', label="STAND 2")
 plt.plot(conc,TS_exp,'ro')
 plt.legend(loc="upper right") 
@@ -200,14 +192,7 @@ plt.ylabel(r'$\sigma /dinacm^{-1}$')
 #Surface coverage
 plt.figure(3)
 plt.plot(F, Theta, 'b')
-#plt.plot(F1, Theta1, 'r')
 plt.xlabel('Free surfactant concentration/M')
 plt.ylabel(r'$\theta $')
 
-
-#Error
-#plt.figure(4)
-#plt.plot(conc, err, 'bo')
-#plt.xlabel('Surfactant concentration/M')
-#plt.ylabel('error $')
 
