@@ -7,6 +7,7 @@ from scipy.optimize import leastsq
 from scipy.optimize import basinhopping
 
 
+
 plt.close("all")
 
 R=8.3144621
@@ -150,23 +151,41 @@ Ps=np.array([dG,bet,Amin,N]) #input seeds
 minimizer_kwargs = {"method": "BFGS"}
 init_seeds = basinhopping(STAND.Aux, Ps, minimizer_kwargs=minimizer_kwargs)
 seeds= np.array([init_seeds.x[0],init_seeds.x[1],init_seeds.x[2],init_seeds.x[3]]) #basinhopping for get the global minimum
-out=leastsq(STAND.Residual, seeds, args=(conc, TS_exp,u_TS)) #least squares
-c=np.array(out)
-d=c[0]
-xi_sq=STAND.Aux(d)
-F,M,TS,Theta=STAND.Adjust(d,conc)
+
+out1,cov1,infodict,mesg,ier =leastsq(STAND.Residual, seeds, args=(conc, TS_exp,u_TS), full_output=1) #least squares
+c=np.array(out1)
+resd1=infodict['fvec']
+n=0
+for i in resd1:
+    n=n+i
+resvar=(n/(len(conc)-4))
+covmat1=resvar*cov1
+STD=np.array(np.sqrt(np.diag(covmat1)).tolist())
+
+
+
+xi_sq=STAND.Aux(c)
+F,M,TS,Theta=STAND.Adjust(c,conc)
 
 #Gibbs adsorption energy
-GsRT=(d[2]*Av/10**16)**-1*Rerg*Tem
-dGads=-RT*np.log(GsRT*d[1])
+GsRT=(c[2]*Av/10**16)**-1*Rerg*Tem
+dGads=-RT*np.log(GsRT*c[1])
 
 
 #out 
 out = {}
-out['Free Gibbs Micellization Energy /kJ/mol'] = round(d[0],2)
-out['Minimum Area /A/molecule '] = round(d[2],2)
-out['Langmuir s constant'] =round( d[1],2)
-out['Aggregation Number'] = round(d[3],2)
+out['Free Gibbs Micellization Energy /kJ/mol'] = round(c[0]/1000,2)
+out['STD Free Gibbs Micellization Energy /kJ/mol'] = round(STD[0]/1000,2)
+
+out['Minimum Area /A/molecule '] = round(c[2],2)
+out['STD Minimum Area /A/molecule '] = round(STD[2],2)
+
+out['Langmuir s constant'] =round( c[1],2)
+out['STD Langmuir s constant'] =round( STD[1],2)
+
+out['Aggregation Number'] = round(c[3],2)
+out['STD Aggregation Number'] = round(STD[3],2)
+
 out['Free Gibbs Adsorption Energy /kJ/mol'] = round(dGads/1000,2)
 out['Xi'] = round(xi_sq,2)
 jsonout = json.dumps(out)
@@ -184,7 +203,7 @@ plt.ylabel('Concentration/M')
 
 #Surface tension vs concentration plot
 plt.figure(2)
-plt.plot(conc,TS,'g', label="STAND 2")
+plt.plot(conc,TS,'g')
 plt.plot(conc,TS_exp,'ro')
 plt.legend(loc="upper right") 
 plt.xlabel('Free surfactant concentration/M')
@@ -195,5 +214,8 @@ plt.figure(3)
 plt.plot(F, Theta, 'b')
 plt.xlabel('Free surfactant concentration/M')
 plt.ylabel(r'$\theta $')
+
+
+
 
 
