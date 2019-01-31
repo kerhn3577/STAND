@@ -5,6 +5,7 @@ import json
 import scipy.optimize
 from scipy.optimize import leastsq
 from scipy.optimize import basinhopping
+import statistics as stats
 
 
 
@@ -36,7 +37,7 @@ conc=np.array([float(List[i][0]) for i in range(0,len(List))] )
 TS_exp=np.array([float(List[i][1]) for i in range(0,len(List))])
 u_conc=np.array([float(List[i][2]) for i in range(0,len(List))])
 u_TS=np.array([float(List[i][3]) for i in range(0,len(List))])
-
+nn=len(conc)
 
 
 # =============================================================================
@@ -162,6 +163,54 @@ resvar=(n/(len(conc)-4))
 covmat1=resvar*cov1
 STD=np.array(np.sqrt(np.diag(covmat1)).tolist())
 
+#Jackknife
+
+def f(par,x, y):
+            model=par[0]*x+par[1]
+            return ((y-model))**2
+
+L=[i for i in conc]
+P=[i for i in TS_exp]
+S=[i for i in u_TS]
+Jk_Gibbs=[]
+Jk_Lang=[]
+Jk_Area=[]
+Jk_Agg=[]
+
+for i in range(0,nn):
+    p=[j for j in L]
+    q=[j for j in P]
+    t=[j for j in S]
+    del(q[i])
+    del(p[i])
+    del(t[i])
+    p=np.array(p)
+    q=np.array(q)
+    t=np.array(t)
+    Ps=np.array([dG,bet,Amin,N]) 
+    minimizer_kwargs = {"method": "BFGS"}
+    init_seeds = basinhopping(STAND.Aux, Ps, minimizer_kwargs=minimizer_kwargs)
+    seeds= np.array([init_seeds.x[0],init_seeds.x[1],init_seeds.x[2],init_seeds.x[3]]) 
+    out1,cov1,infodict,mesg,ier =leastsq(STAND.Residual, seeds, args=(p, q,t), full_output=1) 
+    c=np.array(out1)
+    Jk_Gibbs.append(out1[0])
+    Jk_Lang.append(out1[1])
+    Jk_Area.append(out1[2])
+    Jk_Agg.append(out1[3])
+    
+
+
+prom_Jk_Gibbs=round(stats.mean(Jk_Gibbs),2)
+var_Jk_Gibbs=stats.stdev(Jk_Gibbs)
+
+prom_Jk_Area=round(stats.mean(Jk_Area),2)
+var_Jk_Area=stats.stdev(Jk_Area)
+
+prom_Jk_Lang=round(stats.mean(Jk_Lang),2)
+var_Jk_Lang=stats.stdev(Jk_Lang)
+
+prom_Jk_Agg=round(stats.mean(Jk_Agg),2)
+var_Jk_Agg=stats.stdev(Jk_Agg)
 
 
 xi_sq=STAND.Aux(c)
@@ -170,7 +219,6 @@ F,M,TS,Theta=STAND.Adjust(c,conc)
 #Gibbs adsorption energy
 GsRT=(c[2]*Av/10**16)**-1*Rerg*Tem
 dGads=-RT*np.log(GsRT*c[1])
-
 
 #out 
 out = {}
@@ -190,7 +238,10 @@ out['Free Gibbs Adsorption Energy /kJ/mol'] = round(dGads/1000,2)
 out['Xi'] = round(xi_sq,2)
 jsonout = json.dumps(out)
 print(jsonout)
-
+print(prom_Jk_Gibbs/1000,var_Jk_Gibbs/1000)
+print(prom_Jk_Lang,var_Jk_Lang)
+print(prom_Jk_Area,var_Jk_Area)
+print(prom_Jk_Agg,var_Jk_Agg)
 #Graphs
 
 # Surfactant concentration
